@@ -1,0 +1,20 @@
+SentenceTransformer # For generating embeddings
+pymongo # For MongoDB integration
+request # For making HTTP requests
+dotenv # For loading environment variables
+
+langchain # For language model chaining
+langchain-community # For community extensions of LangChain for mongodb vector store 
+bs4 # For web scraping
+tiktoken # For OpenAI tokenization
+gradio # For user interface
+lxml # For XML parsing
+argparse # For command line argument parsing
+unstructured # For unstructured data handling
+PyMuPDF # For handling PDF files
+python-docx # For handling Word documents
+beautifulsoup4 # For web scraping
+
+langchain-huggingface 
+langchain-mongodb 
+langchain-ollama
