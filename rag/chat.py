@@ -2,6 +2,7 @@ import os
 import logging
 import torch
 import re
+import time
 import gradio as gr
 from dotenv import load_dotenv
 from pymongo import MongoClient
@@ -49,7 +50,7 @@ Question:
 Answer:
 """)
 
-# ------------------------------- 🧠 LLM Setup
+# ------------------------------- 🧠 LLM Factory
 def get_llm(model_name):
     return ChatOllama(
         model=model_name,
@@ -59,7 +60,7 @@ def get_llm(model_name):
         stream=False
     )
 
-# ------------------------------- 🧠 Memory
+# ------------------------------- 🧠 Memory (optional)
 memory = ConversationBufferMemory(
     memory_key="chat_history",
     return_messages=True,
@@ -90,30 +91,47 @@ class MongoDBCustomRetriever(BaseRetriever):
             for doc in raw_results
         ]
 
-# ------------------------------- 💬 Chat Interface Logic
-def chat_interface(user_input, retriever_option, model_choice):
+# ------------------------------- 💬 Respond Function with Stage-wise Yield
+def respond(user_message, chat_history, retriever_option, model_choice):
+    chat_history.append({"role": "user", "content": user_message})
+    chat_history.append({"role": "assistant", "content": "⌛ Retrieving context..."})
+    yield "", chat_history, "", "", "", "", ""
+
     try:
+        overall_start = time.time()
         llm = get_llm(model_choice)
 
-        # Choose retriever
+        # Step 1: Retrieval
+        context_start = time.time()
         if retriever_option == "Custom Mongo Vector Search":
             retriever = MongoDBCustomRetriever()
-            docs = retriever._get_relevant_documents(user_input)
+            docs = retriever._get_relevant_documents(user_message)
         elif retriever_option == "LangChain Similarity Search":
             retriever = vector_store.as_retriever(search_kwargs={"k": 3})
-            docs = retriever.get_relevant_documents(user_input)
+            docs = retriever.get_relevant_documents(user_message)
         elif retriever_option == "LangChain Filtered Retriever":
             retriever = vector_store.as_retriever(search_kwargs={"k": 3, "score_threshold": 0.75})
-            docs = retriever.get_relevant_documents(user_input)
+            docs = retriever.get_relevant_documents(user_message)
         else:
-            return "❌ Invalid retriever option", "", "", "", "", model_choice
+            chat_history[-1]["content"] = "❌ Invalid retriever option"
+            yield "", chat_history, "", "", "", "", ""
+            return
+
+        context_time = time.time() - context_start
 
         context = "\n\n".join([doc.page_content for doc in docs])
-        prompt = qa_prompt.format(context=context, question=user_input)
-        print(f"\n🔍 FINAL PROMPT to {model_choice}:\n", prompt)
+        context_snippets = "\n\n---\n\n".join([doc.page_content[:500] for doc in docs])
+        file_names = "\n".join([f"📄 {doc.metadata.get('filename', 'unknown')}" for doc in docs])
+        prompt = qa_prompt.format(context=context, question=user_message)
 
+        # Step 2: Yield context info early
+        chat_history[-1]["content"] = "⌛ Calling LLM..."
+        yield "", chat_history, context_snippets.strip(), file_names.strip(), prompt.strip(), "", ""
+
+        # Step 3: LLM Call
+        llm_start = time.time()
         response = llm.invoke(prompt)
-        print("🟩 RAW RESPONSE:", response)
+        llm_time = time.time() - llm_start
 
         answer = str(response.content).strip()
         thinking = ""
@@ -123,13 +141,16 @@ def chat_interface(user_input, retriever_option, model_choice):
             thinking = match.group(1).strip()
             answer = re.sub(r"<think>.*?</think>", "", answer, flags=re.DOTALL).strip()
 
-        context_snippets = "\n\n---\n\n".join([doc.page_content[:500] for doc in docs])
-        file_names = "\n".join([f"📄 {doc.metadata.get('filename', 'unknown')}" for doc in docs])
+        total_time = time.time() - overall_start
+        timing_info = f"⏱️ Embedding+Retrieval: {context_time:.2f}s | LLM: {llm_time:.2f}s | Total: {total_time:.2f}s"
 
-        return answer, context_snippets.strip(), file_names.strip(), prompt.strip(), thinking, model_choice
+        # Step 4: Final response
+        chat_history[-1]["content"] = f"{answer}\n\n🤖 Model: `{model_choice}`\n{timing_info}"
+        yield "", chat_history, context_snippets.strip(), file_names.strip(), prompt.strip(), thinking, timing_info
 
     except Exception as e:
-        return f"❌ Error: {e}", "", "", "", "", model_choice
+        chat_history[-1]["content"] = f"❌ Error: {e}"
+        yield "", chat_history, "", "", "", "", ""
 
 # ------------------------------- 🎛 Gradio Interface
 with gr.Blocks() as demo:
@@ -159,23 +180,12 @@ with gr.Blocks() as demo:
             filenames_view = gr.Textbox(label="📁 Source Files", lines=3)
             final_prompt_view = gr.Textbox(label="📝 Final Prompt Sent to LLM", lines=12)
             thinking_view = gr.Textbox(label="🧠 Thinking (if any)", lines=12)
-
-    def respond(user_message, chat_history, retriever_option, model_choice):
-        chat_history.append({"role": "user", "content": user_message})
-        chat_history.append({"role": "assistant", "content": "⌛ Generating answer..."})
-        yield "", chat_history, "", "", "", ""
-
-        answer, context_snippets, file_names, final_prompt, thinking, model_used = chat_interface(
-            user_message, retriever_option, model_choice
-        )
-
-        chat_history[-1]["content"] = f"{answer}\n\n🤖 Response from: `{model_used}`"
-        yield "", chat_history, context_snippets, file_names, final_prompt, thinking
+            timing_view = gr.Textbox(label="⏱️ Timing Info", lines=2)
 
     user_input.submit(
         fn=respond,
         inputs=[user_input, chatbot, retriever_radio, model_radio],
-        outputs=[user_input, chatbot, retrieved_view, filenames_view, final_prompt_view, thinking_view]
+        outputs=[user_input, chatbot, retrieved_view, filenames_view, final_prompt_view, thinking_view, timing_view]
     )
 
     clear_btn.click(lambda: [], None, chatbot)
