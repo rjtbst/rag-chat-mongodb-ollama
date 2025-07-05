@@ -151,7 +151,7 @@ interface = gr.Interface(
         gr.Textbox(label="🧠 RAG Answer , add system prompt", lines=5),
         gr.Textbox(label="🔎 Retrieved Documents (Before RAG)", lines=10),
         gr.Textbox(label="📁 Source Filenames from RAG Output", lines=5),
-         gr.Textbox(label="📜 Final Prompt Sent to LLM", lines=12)
+        gr.Textbox(label="📜 Final Prompt Sent to LLM", lines=12)
        
     ],
     title="🧠 Chat with RAG (LangChain + Ollama + MongoDB)",

@@ -4,17 +4,23 @@ import fitz  # for PDFs
 import docx  # for DOCX files python-docx
 from bs4 import BeautifulSoup
 from pathlib import Path
+from langchain_core.documents import Document
 
 def load_txt(file_path):
     return Path(file_path).read_text(encoding="utf-8")
 
 def load_pdf(file_path):
     doc = fitz.open(file_path)
-    return "\n".join([page.get_text() for page in doc])
+    pages = []
+    for i, page in enumerate(doc):
+        text = page.get_text()
+        pages.append(Document(page_content=text, metadata={"filename": os.path.basename(file_path), "page": i + 1}))
+    return pages
 
 def load_docx(file_path):
     doc = docx.Document(file_path)
-    return "\n".join([para.text for para in doc.paragraphs])
+    full_text = "\n".join([para.text for para in doc.paragraphs if para.text.strip()])
+    return full_text
 
 def load_md(file_path):
     return Path(file_path).read_text(encoding="utf-8")
