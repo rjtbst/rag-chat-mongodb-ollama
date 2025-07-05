@@ -1,45 +1,33 @@
-# Vector Search
+# 🧠 RAG Chatbot with DeepSeek/LLaMA3 + MongoDB + Ollama + Gradio
 
-A robust and extensible framework for implementing, evaluating, and scaling vector similarity search algorithms. Designed for both research and production use, this project leverages best practices in software engineering and modern Python tooling.
+A lightweight Retrieval-Augmented Generation (RAG) chatbot powered by:
+- **DeepSeek/LLaMA3 (via Ollama)**
+- **MongoDB Atlas Vector Search**
+- **LangChain**
+- **HuggingFace Embeddings**
+- **Gradio UI**
 
-## Key Features
+---
 
-- High-performance vector similarity search (cosine, Euclidean, and more)
-- Modular architecture for easy integration of new algorithms and distance metrics
-- Scalable indexing and retrieval for large datasets
-- Comprehensive test suite and example datasets
-- Clean, well-documented codebase following industry standards
+## 🚀 Features
 
-## Quick Start
+- 🧠 **Retrieval-Augmented Generation** using custom MongoDB vector search or LangChain retrievers
+- ⚡ **Real-time performance timing** (embedding + LLM call breakdown)
+- 📁 **File-level context tracing** (shows which documents were used)
+- 🤖 **Switchable models** (`deepseek-r1` or `llama3`)
+- 💬 **Gradio-based chatbot UI** with context visibility and developer tools
 
-1. **Clone the repository**
-    ```bash
-    git clone https://github.com/rjtbst/vectorSearch.git
-    cd vectorSearch
-    ```
-
-2. **Install dependencies**
-    ```bash
-    pip install -r requirements.txt
-    ```
-
-3. **Run an example**
-    ```bash
-    python main.py
-    ```
-
-## Project Layout
-
-- `main.py` — Entry point with usage examples and CLI
-- `vector_search/` — Core library modules (algorithms, indexing, utilities)
-- `data/` — Sample datasets for experimentation
-- `tests/` — Unit and integration tests
+---
 
 
-## Contributing
+## 🔧 Setup
 
-Contributions are encouraged. Please open an issue to discuss your ideas or submit a pull request with improvements. All code should include appropriate tests and documentation.
+### 1. 🧪 Prerequisites
 
-## License
+- Python 3.9+
+- MongoDB Atlas (with [Vector Search](https://www.mongodb.com/docs/atlas/atlas-search/vector-search/) enabled)
+- Ollama installed and models pulled:
+  ```bash
+  ollama pull deepseek
+  ollama pull llama3
 
-Distributed under the MIT License. See `LICENSE` for details.
