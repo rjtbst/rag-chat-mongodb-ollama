@@ -22,14 +22,14 @@ logging.basicConfig(level=logging.INFO)
 load_dotenv()
 MONGO_URI = os.getenv("MONGO_URI")
 DB_NAME = "sample_mflix"
-COLLECTION_NAME = "doctors"
+COLLECTION_NAME = "docs"
 
 client = MongoClient(MONGO_URI)
 collection = client[DB_NAME][COLLECTION_NAME]
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 # ------------------------------- 🧠 System Prompt
-system_prompt = """you are hospital receptionist tells about doctors availability and schedule.
+system_prompt = """You are a helpful assistant. You MUST reply in English using ONLY the context provided.
 
 **Rules**:
 - Use ONLY the information in the context below.
@@ -50,14 +50,6 @@ Question:
 Answer:
 """)
 
-# ------------------------------- 🧠 Memory (optional)
-memory = ConversationBufferMemory(
-    memory_key="chat_history",
-    return_messages=True,
-    input_key="question",
-    output_key="answer"
-)
-
 # ------------------------------- 🧠 LLM Factory
 def get_llm(model_name):
     return ChatOllama(
@@ -65,9 +57,16 @@ def get_llm(model_name):
         system=system_prompt,
         temperature=0.0,
         top_p=0.95,
-        stream=False,
-        memory=memory
+        stream=False
     )
+
+# ------------------------------- 🧠 Memory (optional)
+memory = ConversationBufferMemory(
+    memory_key="chat_history",
+    return_messages=True,
+    input_key="question",
+    output_key="answer"
+)
 
 # ------------------------------- 🧾 Embeddings + Vector Store
 embedding_model = HuggingFaceEmbeddings(
@@ -78,21 +77,21 @@ embedding_model = HuggingFaceEmbeddings(
 vector_store = MongoDBAtlasVectorSearch(
     collection=collection,
     embedding=embedding_model,
-    index_name="doctorSemanticSearch",
+    index_name="docSemanticSearch",
     text_key="content",
     embedding_key="embedding"
 )
 
 # ------------------------------- 🔍 Custom MongoDB Retriever
 class MongoDBCustomRetriever(BaseRetriever):
-    def get_relevant_documents(self, query: str):
+    def _get_relevant_documents(self, query: str):
         raw_results = search(query)
         return [
             Document(page_content=doc["content"], metadata={"filename": doc.get("filename", "Unknown")})
             for doc in raw_results
         ]
 
-# ------------------------------- 💬 Respond Function with Fix
+# ------------------------------- 💬 Respond Function with Stage-wise Yield
 def respond(user_message, chat_history, retriever_option, model_choice):
     chat_history.append({"role": "user", "content": user_message})
     chat_history.append({"role": "assistant", "content": "⌛ Retrieving context..."})
@@ -102,21 +101,17 @@ def respond(user_message, chat_history, retriever_option, model_choice):
         overall_start = time.time()
         llm = get_llm(model_choice)
 
-        # Step 1: Build query with chat history for semantic accuracy
-        history_snippet = " ".join([msg["content"] for msg in chat_history if msg["role"] == "user"][-2:])
-        full_query = f"{history_snippet} {user_message}".strip()
-
-        # Step 2: Retrieval
+        # Step 1: Retrieval
         context_start = time.time()
         if retriever_option == "Custom Mongo Vector Search":
             retriever = MongoDBCustomRetriever()
-            docs = retriever.get_relevant_documents(full_query)
+            docs = retriever._get_relevant_documents(user_message)
         elif retriever_option == "LangChain Similarity Search":
             retriever = vector_store.as_retriever(search_kwargs={"k": 3})
-            docs = retriever.get_relevant_documents(full_query)
+            docs = retriever.get_relevant_documents(user_message)
         elif retriever_option == "LangChain Filtered Retriever":
             retriever = vector_store.as_retriever(search_kwargs={"k": 3, "score_threshold": 0.75})
-            docs = retriever.get_relevant_documents(full_query)
+            docs = retriever.get_relevant_documents(user_message)
         else:
             chat_history[-1]["content"] = "❌ Invalid retriever option"
             yield "", chat_history, "", "", "", "", ""
@@ -129,11 +124,11 @@ def respond(user_message, chat_history, retriever_option, model_choice):
         file_names = "\n".join([f"📄 {doc.metadata.get('filename', 'unknown')}" for doc in docs])
         prompt = qa_prompt.format(context=context, question=user_message)
 
-        # Step 3: Yield context info
+        # Step 2: Yield context info early
         chat_history[-1]["content"] = "⌛ Calling LLM..."
         yield "", chat_history, context_snippets.strip(), file_names.strip(), prompt.strip(), "", ""
 
-        # Step 4: LLM Call
+        # Step 3: LLM Call
         llm_start = time.time()
         response = llm.invoke(prompt)
         llm_time = time.time() - llm_start
@@ -149,7 +144,7 @@ def respond(user_message, chat_history, retriever_option, model_choice):
         total_time = time.time() - overall_start
         timing_info = f"⏱️ Embedding+Retrieval: {context_time:.2f}s | LLM: {llm_time:.2f}s | Total: {total_time:.2f}s"
 
-        # Step 5: Final response
+        # Step 4: Final response
         chat_history[-1]["content"] = f"{answer}\n\n🤖 Model: `{model_choice}`\n{timing_info}"
         yield "", chat_history, context_snippets.strip(), file_names.strip(), prompt.strip(), thinking, timing_info
 

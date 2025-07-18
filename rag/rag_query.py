@@ -10,7 +10,7 @@ load_dotenv()
 MONGO_URI = os.getenv("MONGO_URI")
 client = MongoClient(MONGO_URI)
 db = client.sample_mflix
-collection = db.docs
+collection = db.doctors
 
 model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
 
@@ -19,7 +19,7 @@ def search(query, k=3):
     results = collection.aggregate([
         {
             "$search": {
-                "index": "docSemanticSearch",
+                "index": "doctorSemanticSearch",
                 "knnBeta": {
                     "vector": query_vector,
                     "path": "embedding",
