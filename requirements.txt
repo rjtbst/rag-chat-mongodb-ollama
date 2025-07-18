@@ -18,3 +18,5 @@ beautifulsoup4 # For web scraping
 langchain-huggingface 
 langchain-mongodb 
 langchain-ollama
+
+faker
